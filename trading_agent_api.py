@@ -472,7 +472,7 @@ async def get_current_signals():
 # Simulation Endpoints
 @app.post("/simulations/backtest")
 async def run_backtest_simulation(request: SimulationRequest):
-    """Run a comprehensive backtest simulation"""
+    """Run a comprehensive backtest simulation with status tracking"""
     try:
         # Use enhanced backtesting engine for better results
         import sys
@@ -502,6 +502,8 @@ async def run_backtest_simulation(request: SimulationRequest):
             rebalance_frequency=BacktestPeriod.DAILY
         )
         
+        logger.info(f"Starting backtest: {request.symbols} for {request.duration_days} days")
+        
         # Run enhanced backtest
         backtest_engine = EnhancedBacktestingEngine()
         result = backtest_engine.run_backtest(backtest_config)
@@ -509,10 +511,20 @@ async def run_backtest_simulation(request: SimulationRequest):
         # Generate report
         report = backtest_engine.generate_backtest_report(result)
         
+        logger.info(f"Backtest completed: {result.total_return_percent:.2f}% return, {result.total_trades} trades")
+        
         return {
             "backtest_completed": True,
+            "status": "success",
             "simulation_results": result.to_dict(),
             "investor_report": report,
+            "summary": {
+                "return_percent": result.total_return_percent,
+                "total_trades": result.total_trades,
+                "win_rate": result.win_rate,
+                "max_drawdown": result.max_drawdown,
+                "sharpe_ratio": result.sharpe_ratio
+            },
             "timestamp": datetime.now().isoformat()
         }
         
@@ -520,7 +532,38 @@ async def run_backtest_simulation(request: SimulationRequest):
         logger.error(f"Error running backtest: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Backtest failed: {str(e)}")
+
+@app.get("/simulations/backtest/status")
+async def get_backtest_status():
+    """Get status of recent backtests"""
+    try:
+        from trading_agent.enhanced_backtesting import EnhancedBacktestingEngine
+        backtest_engine = EnhancedBacktestingEngine()
+        
+        recent_results = backtest_engine.backtest_results[-5:] if backtest_engine.backtest_results else []
+        
+        return {
+            "recent_backtests": [
+                {
+                    "completed_at": datetime.now().isoformat(),  # Would need to track actual completion time
+                    "return_percent": r.total_return_percent,
+                    "total_trades": r.total_trades,
+                    "status": "completed"
+                }
+                for r in recent_results
+            ],
+            "total_backtests": len(backtest_engine.backtest_results),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error getting backtest status: {e}")
+        return {
+            "recent_backtests": [],
+            "total_backtests": 0,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
 
 @app.post("/simulations/demo/start")
 async def start_investor_demo(request: SimulationRequest):
@@ -652,6 +695,71 @@ async def log_frontend_message(log_entry: LogEntry):
         logger.error(f"Error logging frontend message: {e}")
         return {
             "logged": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.get("/dashboard/header-data")
+async def get_header_data():
+    """Get header data (portfolio value, daily P&L) for frontend"""
+    global trading_agent
+    
+    try:
+        if trading_agent:
+            portfolio_summary = trading_agent.portfolio.get_portfolio_summary()
+            return {
+                "portfolio_value": portfolio_summary.total_value,
+                "daily_pnl": 0,  # Would need daily tracking
+                "daily_pnl_percent": 0,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            return {
+                "portfolio_value": 0,
+                "daily_pnl": 0,
+                "daily_pnl_percent": 0,
+                "timestamp": datetime.now().isoformat()
+            }
+    except Exception as e:
+        logger.error(f"Error getting header data: {e}")
+        return {
+            "portfolio_value": 0,
+            "daily_pnl": 0,
+            "daily_pnl_percent": 0,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.get("/dashboard/sidebar-data")
+async def get_sidebar_data():
+    """Get sidebar data (trades count, win rate) for frontend"""
+    global trading_agent
+    
+    try:
+        if trading_agent:
+            agent_status = trading_agent.get_agent_status()
+            portfolio = agent_status.get('portfolio', {})
+            agent_info = agent_status.get('agent_info', {})
+            
+            return {
+                "trades_count": agent_info.get('trade_count', 0),
+                "win_rate": portfolio.get('win_rate', 0),
+                "agent_running": agent_info.get('is_running', False),
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            return {
+                "trades_count": 0,
+                "win_rate": 0,
+                "agent_running": False,
+                "timestamp": datetime.now().isoformat()
+            }
+    except Exception as e:
+        logger.error(f"Error getting sidebar data: {e}")
+        return {
+            "trades_count": 0,
+            "win_rate": 0,
+            "agent_running": False,
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }

@@ -363,6 +363,31 @@ startup_time = datetime.utcnow()
 # password reset token storage 
 password_reset_tokens: Dict[str, Dict[str, Any]] = {}
 
+# Helper function to load local binance module
+def load_local_binance():
+    """Load the local binance module from trading_bot/api/binance.py"""
+    import importlib.util
+    # Try using binance_helper first
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    binance_helper_path = os.path.join(project_root, 'binance_helper.py')
+    if os.path.exists(binance_helper_path):
+        sys.path.insert(0, project_root)
+        from binance_helper import load_binance_module
+        return load_binance_module()
+    
+    # Fallback: direct import
+    binance_api_path = os.path.join(os.path.dirname(__file__), '..', 'trading_bot', 'api')
+    binance_api_path = os.path.abspath(binance_api_path)
+    binance_module_path = os.path.join(binance_api_path, 'binance.py')
+    
+    if os.path.exists(binance_module_path):
+        spec = importlib.util.spec_from_file_location("local_binance", binance_module_path)
+        local_binance = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(local_binance)
+        return local_binance
+    else:
+        raise ImportError(f"Local binance.py module not found at {binance_module_path}")
+
 def send_email(to_email: str, subject: str, body: str) -> bool:
     """
     Send email using SMTP settings from environment variables.
@@ -579,11 +604,11 @@ async def execute_trade(
     Requires 'trade' permission
     """
     try:
-        # Import Binance API
-        import sys
-        import os
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'trading_bot', 'api'))
-        from binance import place_order, get_market_price, get_binance_api
+        # Import Binance API from local module
+        local_binance = load_local_binance()
+        place_order = local_binance.place_order
+        get_market_price = local_binance.get_market_price
+        get_binance_api = local_binance.get_binance_api
         
         # Convert symbol to Binance format
         binance_symbol = trade_request.symbol.upper()
@@ -883,9 +908,10 @@ async def get_market_data(
     Get real-time market data for specified symbols from Binance
     """
     try:
-        # Import Binance API
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'trading_bot', 'api'))
-        from binance import get_24hr_stats, get_market_price
+        # Import Binance API from local module
+        local_binance = load_local_binance()
+        get_24hr_stats = local_binance.get_24hr_stats
+        get_market_price = local_binance.get_market_price
 
         market_data = []
 
@@ -950,7 +976,7 @@ async def get_portfolio_summary(current_user: User = Depends(require_permission(
         if response.status_code == 200:
             data = response.json()
             portfolio_summary = data.get('portfolio_summary', {})
-    return {
+            return {
                 "totalValue": portfolio_summary.get('total_value', 0),
                 "availableBalance": portfolio_summary.get('cash_balance', current_user.balance),
                 "totalPnL": portfolio_summary.get('total_pnl', 0),
@@ -964,8 +990,8 @@ async def get_portfolio_summary(current_user: User = Depends(require_permission(
         else:
             # Fallback: get from Binance account
             try:
-                sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'trading_bot', 'api'))
-                from binance import get_account_balance
+                local_binance = load_local_binance()
+                get_account_balance = local_binance.get_account_balance
                 balance_data = get_account_balance()
                 if balance_data.get('status') == 'success':
                     balances = balance_data.get('balances', {})
@@ -987,15 +1013,15 @@ async def get_portfolio_summary(current_user: User = Depends(require_permission(
             # Return minimal data if all fails
             return {
                 "totalValue": current_user.balance,
-        "availableBalance": current_user.balance,
+                "availableBalance": current_user.balance,
                 "totalPnL": 0,
                 "totalPnLPercent": 0,
                 "dayPnL": 0,
                 "dayPnLPercent": 0,
                 "positions": 0,
                 "openOrders": 0,
-        "timestamp": datetime.utcnow()
-    }
+                "timestamp": datetime.utcnow()
+            }
     except Exception as e:
         logger.error(f"Error getting portfolio summary: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get portfolio summary: {str(e)}")
@@ -1032,8 +1058,8 @@ async def get_positions(current_user: User = Depends(require_permission("read"))
         else:
             # Fallback: get from Binance account
             try:
-                sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'trading_bot', 'api'))
-                from binance import get_account_balance
+                local_binance = load_local_binance()
+                get_account_balance = local_binance.get_account_balance
                 balance_data = get_account_balance()
                 if balance_data.get('status') == 'success':
                     balances = balance_data.get('balances', {})
@@ -1044,7 +1070,7 @@ async def get_positions(current_user: User = Depends(require_permission("read"))
                             positions.append({
                                 "id": f"pos_{asset}",
                                 "symbol": f"{asset}/USDT",
-            "side": "long",
+                                "side": "long",
                                 "quantity": total,
                                 "entryPrice": 0,  # Would need trade history
                                 "currentPrice": 0,  # Would need current price
@@ -1079,18 +1105,18 @@ async def get_market_sentiment(current_user: User = Depends(require_permission("
             confidence_map = {'low': 0.3, 'medium': 0.6, 'high': 0.9}
             confidence_score = confidence_map.get(confidence_text, 0.5)
             
-    return {
-        "sentiment": {
+            return {
+                "sentiment": {
                     "label": sentiment_label,
                     "score": confidence_score,
                     "confidence": confidence_text
-        },
-        "sources": [
+                },
+                "sources": [
                     {"source": "RAG Engine", "sentiment": sentiment_label, "confidence": int(confidence_score * 100), "change": "0%"}
                 ],
                 "analysis": data.get('analysis', ''),
-        "timestamp": datetime.utcnow()
-    }
+                "timestamp": datetime.utcnow()
+            }
         else:
             raise HTTPException(status_code=500, detail="RAG engine unavailable")
     except Exception as e:
@@ -1236,9 +1262,10 @@ manager = ConnectionManager()
 async def get_current_market_data():
     """Get current market data for WebSocket updates"""
     try:
-        # Import Binance API
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'trading_bot', 'api'))
-        from binance import get_24hr_stats, get_market_price
+        # Import Binance API from local module
+        local_binance = load_local_binance()
+        get_24hr_stats = local_binance.get_24hr_stats
+        get_market_price = local_binance.get_market_price
 
         symbols = ["BTCUSDT", "ETHUSDT", "ADAUSDT", "SOLUSDT", "MATICUSDT", "DOTUSDT"]
         market_data = {}
@@ -1494,6 +1521,63 @@ async def websocket_portfolio(websocket: WebSocket, token: str = None):
         logger.error(f"Portfolio WebSocket error: {e}")
         manager.disconnect(websocket, "portfolio")
 
+@app.get("/dashboard/header-data")
+async def get_header_data(current_user: User = Depends(require_permission("read"))):
+    """Get header data (portfolio value, daily P&L) for frontend"""
+    try:
+        import requests
+        # Get from trading agent API
+        response = requests.get("http://localhost:8003/dashboard/header-data", timeout=5)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            # Fallback to portfolio summary
+            portfolio_data = await get_portfolio_summary(current_user)
+            return {
+                "portfolio_value": portfolio_data.get("totalValue", 0),
+                "daily_pnl": portfolio_data.get("dayPnL", 0),
+                "daily_pnl_percent": portfolio_data.get("dayPnLPercent", 0),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    except Exception as e:
+        logger.error(f"Error getting header data: {e}")
+        portfolio_data = await get_portfolio_summary(current_user)
+        return {
+            "portfolio_value": portfolio_data.get("totalValue", 0),
+            "daily_pnl": portfolio_data.get("dayPnL", 0),
+            "daily_pnl_percent": portfolio_data.get("dayPnLPercent", 0),
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+@app.get("/dashboard/sidebar-data")
+async def get_sidebar_data(current_user: User = Depends(require_permission("read"))):
+    """Get sidebar data (trades count, win rate) for frontend"""
+    try:
+        import requests
+        # Get from trading agent API
+        response = requests.get("http://localhost:8003/dashboard/sidebar-data", timeout=5)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            # Fallback to agent status
+            agent_data = await get_agent_status(current_user)
+            return {
+                "trades_count": agent_data.get("performance", {}).get("totalTrades", 0),
+                "win_rate": agent_data.get("performance", {}).get("winRate", 0),
+                "agent_running": agent_data.get("isRunning", False),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    except Exception as e:
+        logger.error(f"Error getting sidebar data: {e}")
+        return {
+            "trades_count": 0,
+            "win_rate": 0,
+            "agent_running": False,
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
 @app.get("/")
 async def root():
     """
@@ -1528,6 +1612,10 @@ async def root():
                 "start": "/agent/start",
                 "stop": "/agent/stop",
                 "pause": "/agent/pause"
+            },
+            "dashboard": {
+                "header_data": "/dashboard/header-data",
+                "sidebar_data": "/dashboard/sidebar-data"
             },
             "strategies": {
                 "list": "/strategies",

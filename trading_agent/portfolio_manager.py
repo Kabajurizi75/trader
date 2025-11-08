@@ -88,8 +88,30 @@ class PortfolioManager:
         try:
             import sys
             import os
-            sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'trading_bot', 'api'))
-            from binance import get_market_price
+            # Use helper to load local binance module
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            binance_helper_path = os.path.join(project_root, 'binance_helper.py')
+            if os.path.exists(binance_helper_path):
+                sys.path.insert(0, project_root)
+                from binance_helper import load_binance_module
+                local_binance = load_binance_module()
+                get_market_price = local_binance.get_market_price
+            else:
+                # Fallback: direct import
+                binance_api_path = os.path.join(os.path.dirname(__file__), '..', '..', 'trading_bot', 'api')
+                binance_api_path = os.path.abspath(binance_api_path)
+                if binance_api_path not in sys.path:
+                    sys.path.insert(0, binance_api_path)
+                
+                import importlib.util
+                binance_module_path = os.path.join(binance_api_path, 'binance.py')
+                if os.path.exists(binance_module_path):
+                    spec = importlib.util.spec_from_file_location("local_binance", binance_module_path)
+                    local_binance = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(local_binance)
+                    get_market_price = local_binance.get_market_price
+                else:
+                    raise ImportError("Local binance.py module not found")
             
             for symbol in symbols:
                 # Convert symbol to Binance format (e.g., BTC -> BTCUSDT)
@@ -163,8 +185,32 @@ class PortfolioManager:
             try:
                 import sys
                 import os
-                sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'trading_bot', 'api'))
-                from binance import place_order, get_binance_api
+                # Use helper to load local binance module
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                binance_helper_path = os.path.join(project_root, 'binance_helper.py')
+                if os.path.exists(binance_helper_path):
+                    sys.path.insert(0, project_root)
+                    from binance_helper import load_binance_module
+                    local_binance = load_binance_module()
+                    place_order = local_binance.place_order
+                    get_binance_api = local_binance.get_binance_api
+                else:
+                    # Fallback: direct import
+                    binance_api_path = os.path.join(os.path.dirname(__file__), '..', '..', 'trading_bot', 'api')
+                    binance_api_path = os.path.abspath(binance_api_path)
+                    if binance_api_path not in sys.path:
+                        sys.path.insert(0, binance_api_path)
+                    
+                    import importlib.util
+                    binance_module_path = os.path.join(binance_api_path, 'binance.py')
+                    if os.path.exists(binance_module_path):
+                        spec = importlib.util.spec_from_file_location("local_binance", binance_module_path)
+                        local_binance = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(local_binance)
+                        place_order = local_binance.place_order
+                        get_binance_api = local_binance.get_binance_api
+                    else:
+                        raise ImportError("Local binance.py module not found")
                 
                 binance_api = get_binance_api()
                 if binance_api:
