@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  amiga-trader-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_ENVIRONMENT=${PINECONE_ENVIRONMENT:-us-west1-gcp}
+      - PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME:-financial-news}
+      - BINANCE_API_KEY=${BINANCE_API_KEY}
+    volumes:
+      - .:/app
+    command: uvicorn rag_engine.api_service:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - amiga-trader-network
+
+  # Trading API with OAuth2 Authentication
+  trading-api:
+    build: .
+    ports:
+      - "8001:8001"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+    volumes:
+      - .:/app
+    command: uvicorn trading_api.main:app --host 0.0.0.0 --port 8001 --reload
+    networks:
+      - amiga-trader-network
+    depends_on:
+      - amiga-trader-api
+    
+  # Browser Agent Test Service
+  browser-agent-test:
+    build: .
+    environment:
+      - DISPLAY=:99
+    volumes:
+      - .:/app
+    command: python test_market_agent.py
+    depends_on:
+      - amiga-trader-api
+    networks:
+      - amiga-trader-network
+    profiles:
+      - testing
+
+  # Scheduler Service for Daily Tasks
+  scheduler:
+    build: .
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_ENVIRONMENT=${PINECONE_ENVIRONMENT:-us-west1-gcp}
+      - PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME:-financial-news}
+    volumes:
+      - .:/app
+    command: python scheduler/run_daily.py
+    depends_on:
+      - amiga-trader-api
+    networks:
+      - amiga-trader-network
+    profiles:
+      - production
+
+networks:
+  amiga-trader-network:
+    driver: bridge
+
+volumes:
+  chrome-data: 

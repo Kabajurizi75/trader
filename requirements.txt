@@ -1,0 +1,26 @@
+langchain
+openai
+selenium
+feedparser
+sentence-transformers
+scikit-learn
+numpy
+fastapi
+pydantic
+uvicorn
+pinecone
+langchain-community
+langchain-openai
+langchain-pinecone
+python-dotenv
+beautifulsoup4
+requests
+
+# Browser automation dependencies
+webdriver-manager
+undetected-chromedriver
+
+# FastAPI Authentication dependencies
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
