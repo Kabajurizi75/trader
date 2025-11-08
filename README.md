@@ -115,8 +115,9 @@ PINECONE_INDEX_NAME=financial-news
 SECRET_KEY=your-secret-key-change-in-production
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
-# Trading Configuration
+# Trading Configuration (REQUIRED for real trading)
 BINANCE_API_KEY=your_binance_api_key_here
+BINANCE_SECRET_KEY=your_binance_secret_key_here
 ```
 
 ### 3. Backend Setup

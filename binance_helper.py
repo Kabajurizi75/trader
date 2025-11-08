@@ -11,17 +11,31 @@ def load_binance_module():
     """Load the local binance.py module from trading_bot/api/"""
     # Get the project root directory
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    binance_api_path = os.path.join(current_dir, 'trading_bot', 'api')
-    binance_module_path = os.path.join(binance_api_path, 'binance.py')
     
-    if not os.path.exists(binance_module_path):
-        # Try alternative path
-        binance_api_path = os.path.join(current_dir, '..', 'trading_bot', 'api')
-        binance_module_path = os.path.join(binance_api_path, 'binance.py')
-        binance_api_path = os.path.abspath(binance_api_path)
+    # Try multiple possible paths
+    possible_paths = [
+        os.path.join(current_dir, 'trading_bot', 'api', 'binance.py'),
+        os.path.join(current_dir, '..', 'trading_bot', 'api', 'binance.py'),
+        os.path.join(os.path.dirname(current_dir), 'trading_bot', 'api', 'binance.py'),
+    ]
     
-    if not os.path.exists(binance_module_path):
-        raise ImportError(f"Local binance.py module not found. Searched: {binance_module_path}")
+    binance_module_path = None
+    binance_api_path = None
+    
+    for path in possible_paths:
+        abs_path = os.path.abspath(path)
+        if os.path.exists(abs_path):
+            binance_module_path = abs_path
+            binance_api_path = os.path.dirname(abs_path)
+            break
+    
+    if not binance_module_path or not os.path.exists(binance_module_path):
+        searched_paths = '\n  - '.join([os.path.abspath(p) for p in possible_paths])
+        raise ImportError(
+            f"Local binance.py module not found. Searched paths:\n  - {searched_paths}\n"
+            f"Current directory: {current_dir}\n"
+            f"Please ensure trading_bot/api/binance.py exists."
+        )
     
     # Add to path if not already there
     if binance_api_path not in sys.path:

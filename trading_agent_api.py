@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Optional
+from contextlib import asynccontextmanager
 import logging
 from datetime import datetime
 import asyncio
@@ -27,11 +28,31 @@ from trading_agent.simulation_engine import SimulationEngine, SimulationConfig, 
 
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
+# Global trading agent instance
+trading_agent: Optional[TradingAgent] = None
+simulation_engine = SimulationEngine()
+
+# Lifespan context manager for startup/shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle application startup and shutdown"""
+    global trading_agent
+    # Startup
+    logger.info("Starting Amiga Trading Agent System")
+    trading_agent = create_trading_agent("balanced")
+    logger.info("Trading agent initialized")
+    yield
+    # Shutdown
+    if trading_agent and trading_agent.is_running:
+        await trading_agent.stop_agent()
+    logger.info("Trading agent system shutdown")
+
+# Initialize FastAPI app with lifespan
 app = FastAPI(
     title="Ameron - Complete Trading Agent System",
     description="Autonomous AI-powered trading agent with RAG, portfolio management, and simulations",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
@@ -42,10 +63,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Global trading agent instance
-trading_agent: Optional[TradingAgent] = None
-simulation_engine = SimulationEngine()
 
 # Pydantic models
 class AgentConfig(BaseModel):
@@ -73,25 +90,6 @@ class SimulationRequest(BaseModel):
     symbols: List[str] = ["BTC"]
     strategies: List[str] = ["breakout"]
     investor_profile: str = "balanced"
-
-# Startup and shutdown events
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the trading agent on startup"""
-    global trading_agent
-    logger.info("Starting Amiga Trading Agent System")
-    
-    # Initialize with default balanced profile
-    trading_agent = create_trading_agent("balanced")
-    logger.info("Trading agent initialized")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    global trading_agent
-    if trading_agent and trading_agent.is_running:
-        await trading_agent.stop_agent()
-    logger.info("Trading agent system shutdown")
 
 # Root and health endpoints
 @app.get("/")
