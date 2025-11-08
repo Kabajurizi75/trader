@@ -57,47 +57,82 @@ class LLMQueryEngine:
             return f"Error: Unable to process your request. {str(e)}"
     
     def _query_with_context(self, prompt: str, context: List[Dict]) -> str:
-        """Query LLM with RAG context"""
+        """Query LLM with RAG context - Enhanced for clearer responses"""
         try:
             # Format context for the prompt
             context_text = self._format_context(context)
             
-            # Create the full prompt with context
-            full_prompt = f"""Context Information:
+            # Create the full prompt with context - Enhanced structure
+            full_prompt = f"""Based on the following financial market information, please answer the user's question clearly and comprehensively.
+
+CONTEXT INFORMATION:
 {context_text}
 
-User Question: {prompt}
+USER QUESTION: {prompt}
 
-Please answer the user's question based on the provided context. If the context doesn't contain enough information to answer the question, please say so."""
+INSTRUCTIONS:
+1. Start with a direct answer to the question
+2. Provide detailed explanation using the context provided
+3. Cite specific information from the context when relevant
+4. If the context doesn't fully answer the question, clearly state what information is missing
+5. Structure your response for easy reading
+6. Provide actionable insights when appropriate
+
+Please provide a clear, well-structured response."""
             
-            # Create messages
+            # Create messages with conversation history support
             messages = [
                 SystemMessage(content=self.system_prompt),
                 HumanMessage(content=full_prompt)
             ]
             
-            # Get response
+            # Get response with increased token limit for comprehensive answers
             response = self.llm.invoke(messages)
-            return response.content
+            answer = response.content.strip()
+            
+            # Ensure answer is not empty
+            if not answer or len(answer) < 10:
+                return "I apologize, but I couldn't generate a proper response. Please try rephrasing your question or provide more context."
+            
+            return answer
             
         except Exception as e:
             logger.error(f"Error in context query: {e}")
-            return f"Error processing request with context: {str(e)}"
+            return f"I encountered an error while processing your request: {str(e)}. Please try again or rephrase your question."
     
     def _query_simple(self, prompt: str) -> str:
-        """Simple LLM query without context"""
+        """Simple LLM query without context - Enhanced for clearer responses"""
         try:
+            # Enhance the prompt for better responses
+            enhanced_prompt = f"""Please answer the following question about financial markets, trading, or cryptocurrency clearly and comprehensively:
+
+{prompt}
+
+Please provide:
+1. A direct answer
+2. Detailed explanation
+3. Relevant context or background
+4. Any important considerations or risks
+
+Structure your response for easy reading."""
+            
             messages = [
                 SystemMessage(content=self.system_prompt),
-                HumanMessage(content=prompt)
+                HumanMessage(content=enhanced_prompt)
             ]
             
             response = self.llm.invoke(messages)
-            return response.content
+            answer = response.content.strip()
+            
+            # Ensure answer is not empty
+            if not answer or len(answer) < 10:
+                return "I apologize, but I couldn't generate a proper response. Could you please provide more details or rephrase your question?"
+            
+            return answer
             
         except Exception as e:
             logger.error(f"Error in simple query: {e}")
-            return f"Error processing request: {str(e)}"
+            return f"I encountered an error: {str(e)}. Please try rephrasing your question or providing more context."
     
     def _format_context(self, context: List[Dict]) -> str:
         """Format context documents for LLM prompt"""

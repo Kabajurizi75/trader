@@ -46,6 +46,13 @@ class QueryResponse(BaseModel):
     answer: str
     sources: List[Dict]
     timestamp: str
+    processing_time: Optional[float] = None
+
+class LogEntry(BaseModel):
+    level: str  # DEBUG, INFO, WARN, ERROR
+    message: str
+    category: Optional[str] = None
+    metadata: Optional[Dict] = None
 
 class IngestResponse(BaseModel):
     success: bool
@@ -131,26 +138,35 @@ async def ingest_news(background_tasks: BackgroundTasks):
 # Query the RAG system
 @app.post("/query", response_model=QueryResponse)
 async def query_rag(request: QueryRequest):
-    """Query the RAG system"""
+    """Query the RAG system - Enhanced for clearer responses"""
     try:
         start_time = datetime.now()
         
-        # Process query
-        result = rag_pipeline.query(request.question)
+        # Process query with enhanced context
+        result = rag_pipeline.query(request.question, top_k=request.top_k)
+        
+        # Ensure answer is clear and comprehensive
+        answer = result.get('answer', '')
+        if not answer or len(answer) < 20:
+            answer = "I couldn't find enough information to provide a comprehensive answer. Please try rephrasing your question or asking about a different topic."
         
         processing_time = (datetime.now() - start_time).total_seconds()
         
+        logger.info(f"Query processed: '{request.question[:50]}...' - {len(answer)} chars - {processing_time:.2f}s")
+        
         return QueryResponse(
-            question=result['question'],
-            answer=result['answer'],
-            sources=result['sources'],
+            question=result.get('question', request.question),
+            answer=answer,
+            sources=result.get('sources', []),
             timestamp=datetime.now().isoformat(),
             processing_time=processing_time
         )
         
     except Exception as e:
         logger.error(f"Query failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to process query: {str(e)}")
 
 # Analyze market sentiment
 @app.get("/sentiment", response_model=SentimentResponse)
@@ -236,21 +252,57 @@ async def get_feeds():
         logger.error(f"Feeds retrieval failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# Frontend logging endpoint
+@app.post("/logs/frontend")
+async def log_frontend_message(log_entry: LogEntry):
+    """Receive and log frontend messages to debug.log"""
+    try:
+        log_level = getattr(logging, log_entry.level.upper(), logging.INFO)
+        log_message = log_entry.message
+        
+        if log_entry.category:
+            log_message = f"[{log_entry.category}] {log_message}"
+        
+        if log_entry.metadata:
+            log_message += f" | Metadata: {log_entry.metadata}"
+        
+        logger.log(log_level, log_message)
+        
+        return {
+            "logged": True,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error logging frontend message: {e}")
+        return {
+            "logged": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
 # Simple query endpoint (GET for easy testing)
 @app.get("/ask")
 async def ask_question(q: str):
-    """Simple GET endpoint for questions"""
+    """Simple GET endpoint for questions - Enhanced for clearer responses"""
     try:
         result = rag_pipeline.query(q)
+        answer = result.get('answer', '')
+        
+        # Ensure answer is clear
+        if not answer or len(answer) < 20:
+            answer = "I couldn't find enough information to provide a comprehensive answer. Please try rephrasing your question."
+        
+        logger.info(f"Simple query: '{q[:50]}...' - {len(answer)} chars")
+        
         return {
             "question": q,
-            "answer": result['answer'],
-            "sources_count": len(result['sources']),
+            "answer": answer,
+            "sources_count": len(result.get('sources', [])),
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
         logger.error(f"Simple query failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to process question: {str(e)}")
 
 # Market data scraping endpoints
 @app.get("/market-data/bitcoin")

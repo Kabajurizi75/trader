@@ -55,6 +55,12 @@ class AgentConfig(BaseModel):
     symbols: List[str] = ["BTC", "ETH"]
     strategies: List[str] = ["breakout", "sentiment"]
 
+class LogEntry(BaseModel):
+    level: str  # DEBUG, INFO, WARN, ERROR
+    message: str
+    category: Optional[str] = None
+    metadata: Optional[Dict] = None
+
 class TradeRequest(BaseModel):
     symbol: str
     side: str  # buy/sell
@@ -623,6 +629,33 @@ async def get_ai_market_analysis():
         raise HTTPException(status_code=500, detail=str(e))
 
 # Investor Dashboard Endpoint
+@app.post("/logs/frontend")
+async def log_frontend_message(log_entry: LogEntry):
+    """Receive and log frontend messages to debug.log"""
+    try:
+        log_level = getattr(logging, log_entry.level.upper(), logging.INFO)
+        log_message = log_entry.message
+        
+        if log_entry.category:
+            log_message = f"[{log_entry.category}] {log_message}"
+        
+        if log_entry.metadata:
+            log_message += f" | Metadata: {log_entry.metadata}"
+        
+        logger.log(log_level, log_message)
+        
+        return {
+            "logged": True,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error logging frontend message: {e}")
+        return {
+            "logged": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
 @app.get("/dashboard/investor")
 async def get_investor_dashboard():
     """Get comprehensive investor dashboard data"""
